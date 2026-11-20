@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-11-20T09:22:06.952Z",
+  "updatedAt": "2026-11-20T09:22:31.416Z",
   "folders": [
     {
       "id": "ky_thi_lan_1_2026",
@@ -450,14 +450,15 @@
     {
       "stt": 1,
       "username": "Phạm Văn Tiến",
-      "password": "123456",
+      "password": "Tien123456",
       "fullName": "Phạm Văn Tiến",
       "sbd": "TH2026-0001",
       "className": "12A1",
       "school": "Trường THPT Bỉm Sơn",
       "registeredSubjects": "Toán học, Tiếng Anh, Vật lí",
-      "mustChangePassword": true,
-      "passwordResetRequested": false
+      "mustChangePassword": false,
+      "passwordResetRequested": false,
+      "passwordUpdatedAt": "2026-11-20T09:22:31.416Z"
     }
   ],
   "allResults": [
