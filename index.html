@@ -953,6 +953,67 @@
               </table>
             </div>
           </div>
+
+          <!-- 3-Subject Total Score Summary Section -->
+          <div class="pt-5 mt-5 border-t border-slate-200 dark:border-slate-800 space-y-4">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div>
+                <h4 class="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <i data-lucide="award" class="w-4 h-4 text-indigo-600 dark:text-indigo-400"></i> Thống Kê Tổng Điểm 3 Môn Thi Của Thí Sinh
+                </h4>
+                <p class="text-[11px] text-slate-500 mt-0.5">Tự động tổng hợp điểm Toán học và 2 môn tự chọn theo Kỳ thi đang chọn (thang 30 điểm) • Xếp hạng theo tổng điểm.</p>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <input id="stats3SubSearchInput" type="text" placeholder="Tìm họ tên, SBD, lớp..." class="w-full sm:w-48 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <select id="stats3SubStatusFilter" class="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-xs font-semibold">
+                  <option value="all">Tất cả thí sinh đã thi</option>
+                  <option value="complete">Đã thi đủ 3 môn (3/3)</option>
+                  <option value="partial">Chưa đủ 3 môn (1-2/3)</option>
+                </select>
+                <button id="export3SubStatsCsvBtn" type="button" class="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors">
+                  <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 shrink-0"></i> <span>Xuất CSV 3 môn</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 3-Subject KPI Row -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div class="p-3.5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-800/60">
+                <div class="text-[11px] text-indigo-700 dark:text-indigo-300 font-semibold">Thí sinh đã dự thi</div>
+                <div id="stat3SubCandidates" class="text-xl font-extrabold text-indigo-900 dark:text-white mt-0.5">0</div>
+              </div>
+              <div class="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/60">
+                <div class="text-[11px] text-emerald-700 dark:text-emerald-300 font-semibold">Hoàn thành đủ 3 môn</div>
+                <div id="stat3SubCompleted3" class="text-xl font-extrabold text-emerald-700 dark:text-emerald-300 mt-0.5">0</div>
+              </div>
+              <div class="p-3.5 rounded-2xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/70 dark:border-amber-800/60">
+                <div class="text-[11px] text-amber-800 dark:text-amber-300 font-semibold">Tổng 3 môn cao nhất</div>
+                <div id="stat3SubMaxTotal" class="text-xl font-extrabold text-amber-700 dark:text-amber-300 mt-0.5">0.00</div>
+              </div>
+              <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700">
+                <div class="text-[11px] text-slate-500 font-semibold">TB tổng điểm (nhóm lọc)</div>
+                <div id="stat3SubAvgTotal" class="text-xl font-extrabold text-slate-900 dark:text-white mt-0.5">0.00</div>
+              </div>
+            </div>
+
+            <!-- 3-Subject Ranking Table -->
+            <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+              <table class="w-full min-w-[700px] text-left text-xs border-collapse">
+                <thead>
+                  <tr class="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-500 uppercase">
+                    <th class="py-2.5 px-3 w-12 text-center">Hạng</th>
+                    <th class="py-2.5 px-3">Thí sinh / SBD / Lớp</th>
+                    <th class="py-2.5 px-3">Môn 1 (Toán học)</th>
+                    <th class="py-2.5 px-3">Môn tự chọn 1</th>
+                    <th class="py-2.5 px-3">Môn tự chọn 2</th>
+                    <th class="py-2.5 px-3 text-center">Tiến độ</th>
+                    <th class="py-2.5 px-3 text-right">Tổng điểm 3 môn</th>
+                  </tr>
+                </thead>
+                <tbody id="admin3SubStatsTableBody" class="divide-y divide-slate-100 dark:divide-slate-800"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1627,6 +1688,19 @@
       return !!(f && f.locked);
     }
 
+    function getStudentCompletedExamRecord(examId) {
+      if (!currentUser || currentUser.role !== 'student' || !examId) return null;
+      const uKey = normalizeLoginKey(currentUser.username || currentUser.fullName || '');
+      const sbdKey = normalizeLoginKey(currentUser.sbd || '');
+      return allResults.find(r => {
+        if (r.examId !== examId) return false;
+        const rU = normalizeLoginKey(r.username || '');
+        const rSbd = normalizeLoginKey(r.sbd || '');
+        const rCand = normalizeLoginKey(r.candidate || '');
+        return (uKey && (rU === uKey || (!rU && rCand === uKey))) || (sbdKey && rSbd === sbdKey);
+      }) || null;
+    }
+
     function getExamScheduleStatus(exam) {
       if (!exam || !exam.meta) return { status: 'open', badgeText: 'Mở tự do', badgeClass: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' };
       if (isFolderLocked(exam.meta.folderId)) {
@@ -1680,6 +1754,16 @@
       if (!exam) return;
       const sched = getExamScheduleStatus(exam);
       const isAdmin = currentUser && currentUser.role === 'admin';
+      const completedRec = getStudentCompletedExamRecord(exam.meta.id);
+
+      if (completedRec && !isAdmin) {
+        box.classList.remove('hidden');
+        box.className = 'p-3 rounded-xl text-xs font-semibold text-center border bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300';
+        box.innerHTML = `Bạn đã hoàn thành đề này (<strong>${completedRec.score} điểm</strong> • ${completedRec.date || ''}).<div class="text-[11px] opacity-85 mt-0.5">Quy chế phòng thi: Mỗi tài khoản chỉ được thi 1 lần cho mỗi đề.</div>`;
+        btn.disabled = true;
+        label.textContent = 'Đã Hoàn Thành (Chỉ Thi 1 Lần/Đề)';
+        return;
+      }
 
       if (sched.status === 'locked') {
         box.classList.remove('hidden');
@@ -2186,6 +2270,7 @@
 
       filtered.forEach(exam => {
         const isSelected = exam.meta.id === selectedExamId;
+        const completedRec = getStudentCompletedExamRecord(exam.meta.id);
         const badgeStyles = {
           indigo: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300',
           emerald: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300',
@@ -2212,7 +2297,10 @@
             </div>
             <div class="flex flex-wrap items-center justify-between gap-1.5">
               <span class="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 truncate">${getFolderName(exam.meta.folderId)}</span>
-              <span class="px-2 py-0.5 rounded-md text-[10px] font-bold ${getExamScheduleStatus(exam).badgeClass}">${getExamScheduleStatus(exam).badgeText}</span>
+              <div class="flex items-center gap-1 flex-wrap">
+                ${completedRec ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300">✓ Đã thi (${completedRec.score}đ)</span>` : ''}
+                <span class="px-2 py-0.5 rounded-md text-[10px] font-bold ${getExamScheduleStatus(exam).badgeClass}">${getExamScheduleStatus(exam).badgeText}</span>
+              </div>
             </div>
             <h3 class="font-bold text-slate-900 dark:text-white text-sm sm:text-base leading-snug">${exam.meta.title}</h3>
             <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">${exam.meta.subtitle || 'Đề thi thử chuẩn cấu trúc Tốt nghiệp THPT.'}</p>
@@ -2297,6 +2385,11 @@
       }
       const sched = getExamScheduleStatus(currentExam);
       if (currentUser && currentUser.role === 'student') {
+        const completedRec = getStudentCompletedExamRecord(currentExam.meta.id);
+        if (completedRec) {
+          showToast(`Bạn đã hoàn thành đề "${currentExam.meta.title}" (${completedRec.score} điểm). Mỗi tài khoản chỉ được thi 1 lần/đề!`, 'error');
+          return;
+        }
         if (sched.status === 'locked') {
           showToast(`Kỳ thi "${getFolderName(currentExam.meta.folderId)}" hiện đang được khóa bảo mật. Vui lòng chờ quản trị viên mở khóa!`, 'error');
           return;
@@ -2749,6 +2842,10 @@
     }
 
     function renderResultsView(data) {
+      const retakeBtn = document.getElementById('retakeExamBtn');
+      if (retakeBtn) {
+        retakeBtn.classList.toggle('hidden', !!(currentUser && currentUser.role === 'student'));
+      }
       document.getElementById('resultExamTitle').textContent = data.examTitle;
       document.getElementById('resultCandidateInfo').textContent = `${data.candidate} • SBD: ${data.sbd} • Lớp ${data.className} • ${data.folderName} • ${data.date}`;
       document.getElementById('resultScoreBig').textContent = data.score;
@@ -3183,6 +3280,163 @@
           tbody.appendChild(tr);
         });
       }
+
+      renderStudent3SubjectStats();
+    }
+
+    function isMathSubjectName(subj) {
+      const k = normalizeLoginKey(subj || '');
+      return k === 'toan' || k === 'toan hoc' || k.startsWith('toan ');
+    }
+
+    function computeStudent3SubjectStats() {
+      const fVal = (document.getElementById('statsFolderFilter')?.value) || 'all';
+      const folderRows = allResults.filter(r => fVal === 'all' || r.folderId === fVal);
+      const map = new Map();
+
+      folderRows.forEach(r => {
+        const sbdKey = normalizeLoginKey(r.sbd || '');
+        const userKey = normalizeLoginKey(r.username || r.candidate || '');
+        const key = sbdKey || userKey;
+        if (!key) return;
+
+        if (!map.has(key)) {
+          const stu = studentAccounts.find(s =>
+            (sbdKey && normalizeLoginKey(s.sbd) === sbdKey) ||
+            (userKey && (normalizeLoginKey(s.username) === userKey || normalizeLoginKey(s.fullName) === userKey))
+          );
+          map.set(key, {
+            key,
+            candidate: (stu && stu.fullName) || r.candidate || 'Thí sinh',
+            sbd: (stu && stu.sbd) || r.sbd || '—',
+            className: (stu && stu.className) || r.className || '—',
+            registeredSubjects: (stu && stu.registeredSubjects) || '',
+            subjectScores: {}
+          });
+        }
+        const entry = map.get(key);
+        const subj = String(r.subject || 'Khác').trim();
+        const sc = Number(r.score) || 0;
+        if (entry.subjectScores[subj] === undefined || sc > entry.subjectScores[subj]) {
+          entry.subjectScores[subj] = sc;
+        }
+      });
+
+      const list = Array.from(map.values()).map(entry => {
+        let mathScore = null;
+        const electives = [];
+        Object.entries(entry.subjectScores).forEach(([subj, sc]) => {
+          if (isMathSubjectName(subj)) {
+            mathScore = mathScore === null ? sc : Math.max(mathScore, sc);
+          } else {
+            electives.push({ subject: subj, score: sc });
+          }
+        });
+        electives.sort((a, b) => b.score - a.score || a.subject.localeCompare(b.subject, 'vi'));
+        const elec1 = electives[0] || null;
+        const elec2 = electives[1] || null;
+
+        const takenCount = (mathScore !== null ? 1 : 0) + (elec1 ? 1 : 0) + (elec2 ? 1 : 0);
+        const total3 = (mathScore || 0) + (elec1 ? elec1.score : 0) + (elec2 ? elec2.score : 0);
+        const avg3 = takenCount > 0 ? total3 / takenCount : 0;
+
+        return {
+          ...entry,
+          mathScore,
+          elec1,
+          elec2,
+          takenCount,
+          total3: Number(total3.toFixed(2)),
+          avg3: Number(avg3.toFixed(2))
+        };
+      });
+
+      list.sort((a, b) => b.total3 - a.total3 || b.takenCount - a.takenCount || a.candidate.localeCompare(b.candidate, 'vi'));
+      return list;
+    }
+
+    function renderStudent3SubjectStats() {
+      const tbody = document.getElementById('admin3SubStatsTableBody');
+      if (!tbody) return;
+
+      const allSummary = computeStudent3SubjectStats();
+      const q = normalizeLoginKey(document.getElementById('stats3SubSearchInput')?.value || '');
+      const statusFilter = document.getElementById('stats3SubStatusFilter')?.value || 'all';
+
+      const filtered = allSummary.filter(item => {
+        if (statusFilter === 'complete' && item.takenCount < 3) return false;
+        if (statusFilter === 'partial' && item.takenCount >= 3) return false;
+        if (q) {
+          const hay = normalizeLoginKey(`${item.candidate} ${item.sbd} ${item.className}`);
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
+
+      const completed3Count = allSummary.filter(x => x.takenCount >= 3).length;
+      const maxTotal = filtered.length ? Math.max(...filtered.map(x => x.total3)).toFixed(2) : '0.00';
+      const avgTotal = filtered.length
+        ? (filtered.reduce((a, x) => a + x.total3, 0) / filtered.length).toFixed(2)
+        : '0.00';
+
+      const elCand = document.getElementById('stat3SubCandidates');
+      const elComp = document.getElementById('stat3SubCompleted3');
+      const elMax = document.getElementById('stat3SubMaxTotal');
+      const elAvg = document.getElementById('stat3SubAvgTotal');
+      if (elCand) elCand.textContent = allSummary.length;
+      if (elComp) elComp.textContent = completed3Count;
+      if (elMax) elMax.textContent = `${maxTotal} / 30`;
+      if (elAvg) elAvg.textContent = avgTotal;
+
+      tbody.innerHTML = '';
+      if (!filtered.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="py-6 text-center text-slate-500">Chưa có dữ liệu tổng điểm 3 môn phù hợp với bộ lọc.</td></tr>';
+        return;
+      }
+
+      filtered.forEach((item, idx) => {
+        const rank = idx + 1;
+        const rankBadge = rank === 1
+          ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200'
+          : rank === 2
+            ? 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200'
+            : rank === 3
+              ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200'
+              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400';
+
+        const progressCls = item.takenCount >= 3
+          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300'
+          : 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200';
+
+        const mathHtml = item.mathScore !== null
+          ? `<span class="font-bold text-slate-900 dark:text-white">${item.mathScore.toFixed(2)}</span>`
+          : '<span class="text-slate-400">Chưa thi</span>';
+        const e1Html = item.elec1
+          ? `<div class="font-semibold text-slate-800 dark:text-slate-200">${item.elec1.subject}</div><div class="font-bold text-indigo-600 dark:text-indigo-400">${item.elec1.score.toFixed(2)}</div>`
+          : '<span class="text-slate-400">—</span>';
+        const e2Html = item.elec2
+          ? `<div class="font-semibold text-slate-800 dark:text-slate-200">${item.elec2.subject}</div><div class="font-bold text-indigo-600 dark:text-indigo-400">${item.elec2.score.toFixed(2)}</div>`
+          : '<span class="text-slate-400">—</span>';
+
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50 dark:hover:bg-slate-800/40';
+        tr.innerHTML = `
+          <td class="py-2.5 px-3 text-center"><span class="inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-extrabold ${rankBadge}">${rank}</span></td>
+          <td class="py-2.5 px-3">
+            <div class="font-bold text-slate-900 dark:text-white">${item.candidate}</div>
+            <div class="text-[11px] text-slate-500">${item.sbd} • Lớp ${item.className}</div>
+          </td>
+          <td class="py-2.5 px-3">${mathHtml}</td>
+          <td class="py-2.5 px-3">${e1Html}</td>
+          <td class="py-2.5 px-3">${e2Html}</td>
+          <td class="py-2.5 px-3 text-center"><span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${progressCls}">${item.takenCount}/3 môn</span></td>
+          <td class="py-2.5 px-3 text-right">
+            <div class="text-sm font-extrabold ${item.takenCount >= 3 ? 'text-emerald-600 dark:text-emerald-400' : 'text-indigo-600 dark:text-indigo-400'}">${item.total3.toFixed(2)} <span class="text-[10px] font-semibold text-slate-400">/ 30</span></div>
+            <div class="text-[10px] text-slate-500">TB: ${item.avg3.toFixed(2)}</div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
     }
 
     function downloadCsvFile(filename, headers, rowsArray) {
@@ -4437,11 +4691,20 @@
         submitBtn.disabled = true;
 
         if (currentUser && currentUser.role === 'student') {
+          const stuObj = studentAccounts.find(s => normalizeLoginKey(s.username) === normalizeLoginKey(currentUser.username));
+          const dupOther = studentAccounts.some(s => s !== stuObj && (
+            normalizeLoginKey(s.username) === normalizeLoginKey(fullName) ||
+            normalizeLoginKey(s.fullName) === normalizeLoginKey(fullName)
+          ));
+          if (dupOther) {
+            submitBtn.disabled = false;
+            showToast(`Tên tài khoản "${fullName}" đã tồn tại trên hệ thống. Mỗi tên tài khoản chỉ được đăng ký 1 lần!`, 'error');
+            return;
+          }
           currentUser.fullName = fullName;
           currentUser.school = school;
           currentUser.className = className;
           currentUser.registeredSubjects = all3Subjects;
-          const stuObj = studentAccounts.find(s => s.username.toLowerCase() === currentUser.username.toLowerCase());
           if (stuObj) {
             stuObj.fullName = fullName;
             stuObj.username = fullName;
@@ -4460,12 +4723,18 @@
           closeRegModal();
           showToast(`Đã cập nhật hồ sơ & môn dự thi: ${all3Subjects}`, 'success');
         } else {
-          // New student registration from Login screen: Họ và tên chính là Tên đăng nhập!
+          // New student registration from Login screen: Họ và tên chính là Tên đăng nhập (mỗi tên chỉ đăng ký 1 lần)!
+          const isDuplicateAccount = studentAccounts.some(s =>
+            normalizeLoginKey(s.username) === normalizeLoginKey(fullName) ||
+            normalizeLoginKey(s.fullName) === normalizeLoginKey(fullName)
+          );
+          if (isDuplicateAccount) {
+            submitBtn.disabled = false;
+            showToast(`Tên tài khoản "${fullName}" đã được đăng ký trước đó. Mỗi tài khoản chỉ được đăng ký 1 lần — vui lòng đăng nhập hoặc liên hệ quản trị viên!`, 'error');
+            return;
+          }
           let num = studentAccounts.length + 1;
           let uname = fullName;
-          if (studentAccounts.some(s => normalizeLoginKey(s.username) === normalizeLoginKey(uname))) {
-            uname = `${fullName} (${className})`;
-          }
           const sbd = `TH2026-${String(num).padStart(4, '0')}`;
           const newStu = {
             stt: num,
@@ -4998,6 +5267,33 @@
       // Admin Stats & Backup
       document.getElementById('statsFolderFilter').addEventListener('change', renderAdminStatistics);
       document.getElementById('statsSubjectFilter').addEventListener('change', renderAdminStatistics);
+      document.getElementById('stats3SubSearchInput')?.addEventListener('input', renderStudent3SubjectStats);
+      document.getElementById('stats3SubStatusFilter')?.addEventListener('change', renderStudent3SubjectStats);
+      document.getElementById('export3SubStatsCsvBtn')?.addEventListener('click', () => {
+        const list = computeStudent3SubjectStats();
+        const fSel = document.getElementById('statsFolderFilter');
+        const folderLabel = fSel && fSel.selectedOptions[0] ? fSel.selectedOptions[0].textContent : 'Tat ca ky thi';
+        downloadCsvFile(
+          `thong_ke_tong_3_mon_${Date.now()}.csv`,
+          ['Hang', 'SBD', 'Ho_Va_Ten', 'Lop', 'Ky_Thi', 'Diem_Toan', 'Mon_Tu_Chon_1', 'Diem_TC_1', 'Mon_Tu_Chon_2', 'Diem_TC_2', 'So_Mon_Da_Thi', 'Tong_Diem_3_Mon', 'Diem_TB'],
+          list.map((item, idx) => [
+            idx + 1,
+            item.sbd,
+            item.candidate,
+            item.className,
+            folderLabel,
+            item.mathScore !== null ? item.mathScore.toFixed(2) : '',
+            item.elec1 ? item.elec1.subject : '',
+            item.elec1 ? item.elec1.score.toFixed(2) : '',
+            item.elec2 ? item.elec2.subject : '',
+            item.elec2 ? item.elec2.score.toFixed(2) : '',
+            `${item.takenCount}/3`,
+            item.total3.toFixed(2),
+            item.avg3.toFixed(2)
+          ])
+        );
+        showToast('Đã xuất bảng thống kê tổng điểm 3 môn (CSV)!', 'success');
+      });
       document.getElementById('exportStatsCsvBtn').addEventListener('click', () => {
         const rows = getFilteredResults();
         downloadCsvFile(
