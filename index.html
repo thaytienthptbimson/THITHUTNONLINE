@@ -90,7 +90,7 @@
 
       <form id="loginForm" class="space-y-3.5">
         <div>
-          <label for="loginUsername" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Tên đăng nhập (Username)</label>
+          <label id="loginUsernameLabel" for="loginUsername" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Họ và tên đăng ký (Tên đăng nhập)</label>
           <input id="loginUsername" type="text" required placeholder="Nhập tên đăng nhập..." autocomplete="username" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500" />
         </div>
         <div>
@@ -1228,7 +1228,7 @@
       <form id="studentRegisterForm" class="space-y-4 text-xs">
         <div class="grid grid-cols-2 gap-2.5">
           <div class="col-span-2">
-            <label for="regFullName" class="block font-semibold text-slate-600 dark:text-slate-300 mb-1">Họ và tên thí sinh *</label>
+            <label for="regFullName" class="block font-semibold text-slate-600 dark:text-slate-300 mb-1">Họ và tên thí sinh (dùng làm Tên đăng nhập) *</label>
             <input id="regFullName" type="text" required placeholder="VD: Nguyễn Minh Anh" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
           <div>
@@ -1293,8 +1293,8 @@
       <form id="studentSelfUpdatePassForm" class="space-y-3 text-xs">
         <div class="grid grid-cols-2 gap-2.5">
           <div>
-            <label for="selfPassUsername" class="block font-semibold text-slate-600 dark:text-slate-300 mb-1">Username thí sinh *</label>
-            <input id="selfPassUsername" type="text" required placeholder="hs01" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 font-mono text-sm" />
+            <label for="selfPassUsername" class="block font-semibold text-slate-600 dark:text-slate-300 mb-1">Họ và tên (Tên đăng nhập) *</label>
+            <input id="selfPassUsername" type="text" required placeholder="Nguyễn Minh Anh" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 font-mono text-sm" />
           </div>
           <div>
             <label for="selfPassCurrent" class="block font-semibold text-slate-600 dark:text-slate-300 mb-1">Mật khẩu hiện tại *</label>
@@ -1762,7 +1762,9 @@
       students: 'eduexam_students_v2',
       results: 'eduexam_results_v2',
       anticheat: 'eduexam_anticheat_v2',
-      github: 'eduexam_github_v2'
+      github: 'eduexam_github_v2',
+      session: 'eduexam_active_session_v2',
+      activeExam: 'eduexam_active_exam_v2'
     };
 
     function safeGetStorage(key, fallback) {
@@ -1773,6 +1775,55 @@
     }
     function safeSetStorage(key, value) {
       try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
+    }
+    function safeRemoveStorage(key) {
+      try { localStorage.removeItem(key); } catch (e) {}
+    }
+
+    // Safe blob download helper (prevents mobile refresh re-download glitches)
+    function triggerSafeDownload(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = filename;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        a.remove();
+        URL.revokeObjectURL(url);
+      }, 1500);
+    }
+
+    function saveActiveSession() {
+      if (!currentUser) return;
+      safeSetStorage(STORE_KEYS.session, { user: currentUser, view: currentView });
+    }
+
+    function clearActiveSession() {
+      safeRemoveStorage(STORE_KEYS.session);
+      safeRemoveStorage(STORE_KEYS.activeExam);
+    }
+
+    function saveActiveExamState() {
+      if (currentView !== 'exam' || !currentExam) return;
+      safeSetStorage(STORE_KEYS.activeExam, {
+        examId: currentExam.meta.id,
+        currentQIndex,
+        userAnswers,
+        flaggedQuestions: Array.from(flaggedQuestions),
+        questionTimeSpent,
+        violationCount,
+        integrityScore,
+        proctorLogs: proctorLogs.slice(0, 30),
+        totalExamSeconds,
+        endTimestamp: Date.now() + Math.max(0, remainingSeconds) * 1000
+      });
+    }
+
+    function clearActiveExamState() {
+      safeRemoveStorage(STORE_KEYS.activeExam);
     }
 
     function updateHeaderGithubBadge(state = 'idle', text = '') {
@@ -1843,9 +1894,13 @@
       try {
         if ('speechSynthesis' in window) {
           window.speechSynthesis.cancel();
-          const utter = new SpeechSynthesisUtterance(text);
+          const spokenText = String(text || '').replace(/(\d+)\.(\d+)/g, '$1 phẩy $2');
+          const utter = new SpeechSynthesisUtterance(spokenText);
           utter.lang = 'vi-VN';
-          utter.rate = 1.05;
+          utter.rate = 1.0;
+          const voices = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
+          const viVoice = voices.find(v => (v.lang || '').toLowerCase().startsWith('vi'));
+          if (viVoice) utter.voice = viVoice;
           window.speechSynthesis.speak(utter);
         }
       } catch (e) {}
@@ -1883,6 +1938,7 @@
         stuBtn.classList.remove(...active); stuBtn.classList.add(...idle);
         document.getElementById('loginUsername').value = '';
         document.getElementById('loginPassword').value = '';
+        document.getElementById('loginUsernameLabel').textContent = 'Tên đăng nhập Quản trị';
         document.getElementById('loginUsername').placeholder = 'Nhập tài khoản quản trị...';
         document.getElementById('forgotPassRow')?.classList.add('hidden');
         document.getElementById('studentAuthActionsRow')?.classList.add('hidden');
@@ -1891,15 +1947,20 @@
         admBtn.classList.remove(...active); admBtn.classList.add(...idle);
         document.getElementById('loginUsername').value = '';
         document.getElementById('loginPassword').value = '';
-        document.getElementById('loginUsername').placeholder = 'Nhập tên đăng nhập thí sinh...';
+        document.getElementById('loginUsernameLabel').textContent = 'Họ và tên đăng ký (Tên đăng nhập)';
+        document.getElementById('loginUsername').placeholder = 'Nhập Họ và tên đã đăng ký...';
         document.getElementById('forgotPassRow')?.classList.remove('hidden');
         document.getElementById('studentAuthActionsRow')?.classList.remove('hidden');
       }
     }
 
+    function normalizeLoginKey(str) {
+      return String(str || '').trim().replace(/\s+/g, ' ').toLowerCase();
+    }
+
     function handleLogin(e) {
       e.preventDefault();
-      const user = document.getElementById('loginUsername').value.trim();
+      const user = document.getElementById('loginUsername').value.trim().replace(/\s+/g, ' ');
       const pass = document.getElementById('loginPassword').value.trim();
 
       if (authLoginMode === 'admin') {
@@ -1914,9 +1975,13 @@
         return;
       }
 
-      const found = studentAccounts.find(s => s.username.toLowerCase() === user.toLowerCase() && s.password === pass);
+      const normUser = normalizeLoginKey(user);
+      const found = studentAccounts.find(s =>
+        (normalizeLoginKey(s.username) === normUser || normalizeLoginKey(s.fullName) === normUser) &&
+        s.password === pass
+      );
       if (!found) {
-        showToast('Sai Username hoặc Mật khẩu thí sinh. Nếu quên, bấm "Quên mật khẩu?" để nhờ Quản trị viên Reset.', 'error');
+        showToast('Sai tên đăng nhập hoặc mật khẩu thí sinh. Nếu quên, vui lòng bấm "Quên mật khẩu?" để nhờ quản trị viên cấp lại.', 'error');
         return;
       }
       if (found.mustChangePassword) {
@@ -1962,11 +2027,13 @@
       renderLobbyFoldersAndExams();
       renderHistory();
       switchView(isStudent ? 'lobby' : 'teacher');
+      saveActiveSession();
     }
 
     function logoutUser() {
       if (timerInterval) clearInterval(timerInterval);
       currentUser = null;
+      clearActiveSession();
       document.getElementById('authGateOverlay').classList.remove('hidden');
       showToast('Đã đăng xuất khỏi hệ thống.', 'info');
     }
@@ -2012,6 +2079,7 @@
           renderHistory();
         }
       }
+      saveActiveSession();
       window.scrollTo({ top: 0, behavior: 'smooth' });
       if (window.lucide) lucide.createIcons();
     }
@@ -2186,7 +2254,7 @@
         showToast('Đã kích hoạt Camera giám sát AI thành công!', 'success');
       } catch (e) {
         statusLabel.textContent = 'AI SIM MODE';
-        showToast('Camera trình duyệt đang bị hạn chế — chuyển sang chế độ Mô phỏng AI Vision.', 'warning');
+        showToast('Trình duyệt chưa cấp quyền máy ảnh — hệ thống chuyển sang chế độ giám sát mô phỏng.', 'warning');
       }
     }
 
@@ -2208,7 +2276,7 @@
       const sched = getExamScheduleStatus(currentExam);
       if (currentUser && currentUser.role === 'student') {
         if (sched.status === 'locked') {
-          showToast(`Kỳ thi "${getFolderName(currentExam.meta.folderId)}" đang được khóa bảo mật. Chờ Quản trị viên mở khóa!`, 'error');
+          showToast(`Kỳ thi "${getFolderName(currentExam.meta.folderId)}" hiện đang được khóa bảo mật. Vui lòng chờ quản trị viên mở khóa!`, 'error');
           return;
         }
         if (sched.status === 'upcoming') {
@@ -2269,6 +2337,7 @@
       switchView('exam');
       renderQuestion();
       renderOmrPalette();
+      saveActiveExamState();
       startExamTimer();
       playTone(740, 0.15);
       speakAI(`Bắt đầu làm bài thi môn ${currentExam.meta.subject}. Thời gian ${currentExam.meta.durationMinutes} phút.`);
@@ -2334,12 +2403,13 @@
       document.getElementById('examViolationText').textContent = `Cảnh báo chống gian lận: ${reason}`;
       document.getElementById('examViolationCounter').textContent = `${violationCount}/${antiCheatCfg.maxViolations}`;
 
-      showToast(`Giám sát AI: ${reason} (${violationCount}/${antiCheatCfg.maxViolations})`, 'error');
+      saveActiveExamState();
+      showToast(`Cảnh báo giám sát: ${reason} (Lần ${violationCount}/${antiCheatCfg.maxViolations}).`, 'error');
       playTone(300, 0.25);
 
       if (antiCheatCfg.autoSubmitOnCheat && violationCount >= Number(antiCheatCfg.maxViolations || 3)) {
         addProctorLog('Vượt quá giới hạn vi phạm — hệ thống tự động thu bài!', 'warn');
-        showToast('Vượt quá số lần vi phạm quy chế thi! Hệ thống tự động thu bài ngay lập tức.', 'error');
+        showToast('Bạn đã vượt quá số lần vi phạm quy chế thi cho phép. Hệ thống đang tự động thu bài!', 'error');
         speakAI('Bạn đã vi phạm quy chế thi quá số lần cho phép. Hệ thống tự động thu bài.');
         setTimeout(() => finishAndGradeExam(), 600);
       }
@@ -2529,6 +2599,7 @@
       const total = currentExam.questions.length || 1;
       document.getElementById('answeredCountBadge').textContent = `${answeredCount}/${currentExam.questions.length} câu`;
       document.getElementById('examProgressBar').style.width = `${Math.round((answeredCount / total) * 100)}%`;
+      saveActiveExamState();
     }
 
     // ==================== GRADING & RESULTS ====================
@@ -2548,6 +2619,7 @@
 
     function finishAndGradeExam() {
       if (timerInterval) clearInterval(timerInterval);
+      clearActiveExamState();
       document.getElementById('submitModal').classList.add('hidden');
       try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch (e) {}
 
@@ -3095,12 +3167,7 @@
       const escapeCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
       const csvLines = [headers.map(escapeCell).join(','), ...rowsArray.map(r => r.map(escapeCell).join(','))];
       const blob = new Blob(['\uFEFF' + csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      triggerSafeDownload(blob, filename);
     }
 
     // --- 4.4 Anti-Cheat Config ---
@@ -3146,7 +3213,7 @@
       saveGithubForm();
       const logEl = document.getElementById('githubSyncLog');
       if (!githubCfg.owner || !githubCfg.repo) {
-        showToast('Vui lòng nhập GitHub Username/Owner và Tên Repository trước.', 'warning');
+        showToast('Vui lòng nhập tên tài khoản GitHub và tên kho lưu trữ trước.', 'warning');
         return;
       }
       const repoUrl = `https://api.github.com/repos/${encodeURIComponent(githubCfg.owner)}/${encodeURIComponent(githubCfg.repo)}`;
@@ -3160,7 +3227,7 @@
         const canPush = info.permissions ? !!info.permissions.push : Boolean(githubCfg.token);
         logEl.textContent = `Kết nối thành công tới ${info.full_name} (${info.private ? 'Private' : 'Public'}) • Quyền ghi (Push): ${canPush ? 'Có' : 'Chỉ đọc (cần PAT)'}.`;
         updateHeaderGithubBadge('synced', info.name);
-        showToast(`Kết nối thành công tới GitHub repo ${info.full_name}!`, 'success');
+        showToast(`Kết nối thành công tới kho lưu trữ GitHub ${info.full_name}!`, 'success');
       } catch (err) {
         logEl.textContent = `Lỗi kiểm tra kết nối: ${err.message}`;
         updateHeaderGithubBadge('error', 'Lỗi GitHub');
@@ -3187,7 +3254,7 @@
       const logEl = document.getElementById('githubSyncLog');
       const badgeEl = document.getElementById('githubSyncStatusBadge');
       if (!githubCfg.owner || !githubCfg.repo || !githubCfg.token) {
-        if (!silent) showToast('Vui lòng nhập đủ Owner, Repository và GitHub Token (PAT) để đẩy dữ liệu.', 'warning');
+        if (!silent) showToast('Vui lòng nhập đầy đủ Tên tài khoản, Kho lưu trữ và Mã truy cập (Token) để cập nhật dữ liệu lên GitHub.', 'warning');
         return;
       }
 
@@ -3396,7 +3463,7 @@
       if (!fromAuthScreen) saveGithubForm();
       const logEl = document.getElementById('githubSyncLog');
       if (!githubCfg.owner || !githubCfg.repo) {
-        showToast('Chưa có cấu hình GitHub (Owner/Repo). Hãy đăng nhập Quản trị để cấu hình trước.', 'warning');
+        showToast('Chưa có cấu hình GitHub. Vui lòng đăng nhập quyền Quản trị để thiết lập trước.', 'warning');
         return;
       }
       const apiUrl = `https://api.github.com/repos/${encodeURIComponent(githubCfg.owner)}/${encodeURIComponent(githubCfg.repo)}/contents/${githubCfg.path}?ref=${encodeURIComponent(githubCfg.branch || 'main')}`;
@@ -4074,8 +4141,7 @@
   </w:body>
 </w:document>`);
       const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = 'mau_de_word_gach_chan_2026.docx'; a.click(); URL.revokeObjectURL(url);
+      triggerSafeDownload(blob, 'mau_de_word_gach_chan_2026.docx');
       showToast('Đã tải tệp .DOCX mẫu có sẵn đáp án gạch chân, bảng biểu & công thức toán!', 'success');
     }
 
@@ -4270,7 +4336,7 @@
 
       document.getElementById('studentRegisterForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const fullName = document.getElementById('regFullName').value.trim();
+        const fullName = document.getElementById('regFullName').value.trim().replace(/\s+/g, ' ');
         const school = document.getElementById('regSchool').value.trim();
         const className = document.getElementById('regClass').value.trim();
         if (!fullName || !school || !className) {
@@ -4294,6 +4360,8 @@
           const stuObj = studentAccounts.find(s => s.username.toLowerCase() === currentUser.username.toLowerCase());
           if (stuObj) {
             stuObj.fullName = fullName;
+            stuObj.username = fullName;
+            currentUser.username = fullName;
             stuObj.school = school;
             stuObj.className = className;
             stuObj.registeredSubjects = all3Subjects;
@@ -4308,12 +4376,11 @@
           closeRegModal();
           showToast(`Đã cập nhật hồ sơ & môn dự thi: ${all3Subjects}`, 'success');
         } else {
-          // New student registration from Login screen
+          // New student registration from Login screen: Họ và tên chính là Tên đăng nhập!
           let num = studentAccounts.length + 1;
-          let uname = `hs${String(num).padStart(2, '0')}`;
-          while (studentAccounts.some(s => s.username.toLowerCase() === uname.toLowerCase())) {
-            num++;
-            uname = `hs${String(num).padStart(2, '0')}`;
+          let uname = fullName;
+          if (studentAccounts.some(s => normalizeLoginKey(s.username) === normalizeLoginKey(uname))) {
+            uname = `${fullName} (${className})`;
           }
           const sbd = `TH2026-${String(num).padStart(4, '0')}`;
           const newStu = {
@@ -4338,7 +4405,7 @@
           const notice = document.getElementById('regResultNotice');
           notice.classList.remove('hidden');
           notice.innerHTML = `<strong>Đăng ký dự thi thành công!</strong><br/>• Tên đăng nhập: <code class="font-mono font-bold">${uname}</code> • Mật khẩu mặc định: <code class="font-mono font-bold">123456</code><br/>• SBD: <strong>${sbd}</strong> • Môn dự thi: <strong>${all3Subjects}</strong>`;
-          showToast(`Đăng ký thành công! Username của bạn là ${uname} (SBD: ${sbd}).`, 'success');
+          showToast(`Đăng ký thành công! Tên đăng nhập của bạn là "${uname}" (SBD: ${sbd}).`, 'success');
         }
       });
 
@@ -4363,14 +4430,15 @@
         const newP = document.getElementById('selfPassNew').value;
         const confP = document.getElementById('selfPassConfirm').value;
 
-        const stu = studentAccounts.find(s => s.username.toLowerCase() === uname.toLowerCase());
+        const normU = normalizeLoginKey(uname);
+        const stu = studentAccounts.find(s => normalizeLoginKey(s.username) === normU || normalizeLoginKey(s.fullName) === normU);
         if (!stu || stu.password !== curP) {
-          showToast('Sai Username hoặc Mật khẩu hiện tại!', 'error');
+          showToast('Sai tên đăng nhập hoặc mật khẩu hiện tại!', 'error');
           return;
         }
         if (newP) {
           if (newP.length < 6 || /\s/.test(newP) || !(/[A-Za-z]/.test(newP) && /[0-9]/.test(newP))) {
-            showToast('Mật khẩu mới cần ≥ 6 ký tự, không khoảng trắng, gồm cả chữ và số.', 'warning');
+            showToast('Mật khẩu mới cần có ít nhất 6 ký tự, không chứa khoảng trắng và gồm cả chữ cái lẫn chữ số.', 'warning');
             return;
           }
           if (newP === curP) {
@@ -4423,7 +4491,7 @@
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'DanhSachHocSinh');
         XLSX.writeFile(wb, 'mau_danh_sach_hoc_sinh_2026.xlsx');
-        showToast('Đã tải file Excel mẫu (STT, Họ tên, Lớp, Môn đăng ký)!', 'success');
+        showToast('Đã tải xuống tệp Excel mẫu (STT, Họ tên, Lớp, Môn đăng ký)!', 'success');
       });
 
       document.getElementById('excelStudentsFileInput').addEventListener('change', async (e) => {
@@ -4462,10 +4530,9 @@
               updatedCount++;
             } else {
               let num = studentAccounts.length + 1;
-              let uname = mapped.username || `hs${String(num).padStart(2, '0')}`;
-              while (studentAccounts.some(s => s.username.toLowerCase() === uname.toLowerCase())) {
-                num++;
-                uname = `hs${String(num).padStart(2, '0')}`;
+              let uname = mapped.username || fullName;
+              if (studentAccounts.some(s => normalizeLoginKey(s.username) === normalizeLoginKey(uname))) {
+                uname = `${fullName} (${className})`;
               }
               const sbd = mapped.sbd || `TH2026-${String(num).padStart(4, '0')}`;
               studentAccounts.push({
@@ -4487,9 +4554,9 @@
           e.target.value = '';
           saveAllLocalData();
           renderStudentTable();
-          showToast(`Cập nhật Excel thành công: thêm mới ${addedCount}, cập nhật ${updatedCount} học sinh!`, 'success');
+          showToast(`Cập nhật từ tệp Excel thành công: thêm mới ${addedCount}, cập nhật ${updatedCount} thí sinh!`, 'success');
         } catch (err) {
-          showToast(`Lỗi đọc file Excel: ${err.message}`, 'error');
+          showToast(`Không thể đọc tệp Excel: ${err.message}`, 'error');
         }
       });
 
@@ -4562,15 +4629,16 @@
       document.getElementById('cancelForgotPassBtn').addEventListener('click', closeForgot);
       document.getElementById('submitForgotPassBtn').addEventListener('click', async () => {
         const key = document.getElementById('forgotPassLookupInput').value.trim().toLowerCase();
-        if (!key) { showToast('Vui lòng nhập Username hoặc SBD của bạn.', 'warning'); return; }
-        const stu = studentAccounts.find(s => s.username.toLowerCase() === key || String(s.sbd || '').toLowerCase() === key);
-        if (!stu) { showToast('Không tìm thấy thí sinh với Username/SBD này.', 'error'); return; }
+        if (!key) { showToast('Vui lòng nhập Họ và tên đăng nhập hoặc số báo danh của bạn.', 'warning'); return; }
+        const normKey = normalizeLoginKey(key);
+        const stu = studentAccounts.find(s => normalizeLoginKey(s.username) === normKey || normalizeLoginKey(s.fullName) === normKey || normalizeLoginKey(s.sbd) === normKey);
+        if (!stu) { showToast('Không tìm thấy thí sinh có họ tên hoặc số báo danh này.', 'error'); return; }
         stu.passwordResetRequested = true;
         saveAllLocalData(true);
         const syncRes = await syncStudentAccountToGithub(stu, 'Student password reset request');
         closeForgot();
         showToast(
-          `Đã gửi yêu cầu Reset mật khẩu cho ${stu.fullName}. Hãy báo Quản trị viên để nhận mật khẩu mới!`,
+          `Đã gửi yêu cầu cấp lại mật khẩu cho thí sinh ${stu.fullName}. Vui lòng báo với quản trị viên để nhận mật khẩu mới!`,
           'success'
         );
       });
@@ -4593,7 +4661,7 @@
         saveAllLocalData();
         renderStudentTable();
         closeAdminReset();
-        showToast(`Đã Reset mật khẩu của ${stu.fullName} (${stu.username}) thành "${newPass}" (bắt buộc đổi khi đăng nhập).`, 'success');
+        showToast(`Đã đặt lại mật khẩu của ${stu.fullName} thành "${newPass}". Thí sinh sẽ cần đổi mật khẩu mới ở lần đăng nhập kế tiếp.`, 'success');
       });
 
       // Nav & Global utilities
@@ -4659,7 +4727,7 @@
       document.getElementById('confirmSubmitBtn').addEventListener('click', finishAndGradeExam);
       document.getElementById('exitExamBtn').addEventListener('click', () => { const m = document.getElementById('exitModal'); m.classList.remove('hidden'); m.classList.add('flex'); });
       document.getElementById('cancelExitBtn').addEventListener('click', () => document.getElementById('exitModal').classList.add('hidden'));
-      document.getElementById('confirmExitBtn').addEventListener('click', () => { if (timerInterval) clearInterval(timerInterval); document.getElementById('exitModal').classList.add('hidden'); switchView('lobby'); });
+      document.getElementById('confirmExitBtn').addEventListener('click', () => { if (timerInterval) clearInterval(timerInterval); clearActiveExamState(); document.getElementById('exitModal').classList.add('hidden'); switchView('lobby'); });
 
       // Results controls
       document.getElementById('retakeExamBtn').addEventListener('click', startExam);
@@ -4668,8 +4736,7 @@
       document.getElementById('exportResultJsonBtn').addEventListener('click', () => {
         if (!lastResultData) return;
         const blob = new Blob([JSON.stringify(lastResultData, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = `ket_qua_${lastResultData.sbd}_${lastResultData.examId}.json`; a.click(); URL.revokeObjectURL(url);
+        triggerSafeDownload(blob, `ket_qua_${lastResultData.sbd}_${lastResultData.examId}.json`);
       });
       document.querySelectorAll('.review-filter-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -4729,8 +4796,7 @@
       });
       document.getElementById('downloadTemplateJsonBtn').addEventListener('click', () => {
         const blob = new Blob([JSON.stringify(DEFAULT_EXAMS[0], null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = 'mau_de_thi_thpt_2026.json'; a.click(); URL.revokeObjectURL(url);
+        triggerSafeDownload(blob, 'mau_de_thi_thpt_2026.json');
       });
       document.getElementById('jsonFileInput').addEventListener('change', (e) => {
         const file = e.target.files[0]; if (!file) return;
@@ -4780,9 +4846,9 @@
         const fullName = document.getElementById('stuFullName').value.trim();
         const sbd = document.getElementById('stuSbd').value.trim() || `TH2026-${Math.floor(1000 + Math.random()*9000)}`;
         const className = document.getElementById('stuClass').value.trim() || '12A1';
-        if (!username || !password || !fullName) { showToast('Nhập đủ Username, Mật khẩu và Họ tên thí sinh.', 'warning'); return; }
+        if (!username || !password || !fullName) { showToast('Vui lòng nhập đầy đủ Tên đăng nhập, Mật khẩu và Họ tên thí sinh.', 'warning'); return; }
         if (studentAccounts.some(s => s.username.toLowerCase() === username.toLowerCase())) {
-          showToast('Username này đã tồn tại!', 'error'); return;
+          showToast('Tên đăng nhập này đã tồn tại trên hệ thống!', 'error'); return;
         }
         const registeredSubjects = (document.getElementById('stuSubjects')?.value || '').trim() || 'Toán, Văn, Tiếng Anh, Tự chọn';
         studentAccounts.unshift({ stt: studentAccounts.length + 1, username, password, fullName, sbd, className, school: 'THPT Bỉm Sơn', registeredSubjects, mustChangePassword: true, passwordResetRequested: false });
@@ -4808,7 +4874,7 @@
         });
         document.getElementById('bulkStudentsInput').value = '';
         saveAllLocalData(); renderStudentTable();
-        showToast(`Đã sinh tự động ${added} tài khoản thí sinh!`, 'success');
+        showToast(`Đã tạo tự động ${added} tài khoản thí sinh thành công!`, 'success');
       });
 
       document.getElementById('adminStudentSearchInput').addEventListener('input', renderStudentTable);
@@ -4834,7 +4900,7 @@
           const wb = XLSX.utils.book_new();
           XLSX.utils.book_append_sheet(wb, ws, 'DanhSachThiSinh');
           XLSX.writeFile(wb, `danh_sach_thi_sinh_dang_ky_${Date.now()}.xlsx`);
-          showToast('Đã xuất danh sách thí sinh ra file Excel (.xlsx) — không bao gồm mật khẩu!', 'success');
+          showToast('Đã xuất danh sách thí sinh ra tệp Excel (.xlsx) thành công (đã ẩn mật khẩu)!', 'success');
         } else {
           downloadCsvFile(
             'danh_sach_thi_sinh_dang_ky.csv',
@@ -4860,8 +4926,7 @@
       document.getElementById('exportFullBackupBtn').addEventListener('click', () => {
         const payload = { exportedAt: new Date().toISOString(), folders, examBank, studentAccounts, allResults, antiCheatCfg };
         const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = `eduexam_full_backup_${Date.now()}.json`; a.click(); URL.revokeObjectURL(url);
+        triggerSafeDownload(blob, `eduexam_full_backup_${Date.now()}.json`);
         showToast('Đã tải xuống tệp sao lưu toàn hệ thống!', 'success');
       });
 
@@ -4921,7 +4986,7 @@
         } else {
           switchView('teacher');
           switchAdminTab('github');
-          showToast('Hãy nhập Owner, Repo và Token để kết nối GitHub Cloud.', 'info');
+          showToast('Vui lòng nhập đầy đủ Tên tài khoản, Kho lưu trữ và Mã truy cập để kết nối GitHub.', 'info');
         }
       });
 
@@ -4936,17 +5001,17 @@
       document.getElementById('copyGithubShareLinkBtn').addEventListener('click', () => {
         saveGithubForm();
         if (!githubCfg.owner || !githubCfg.repo) {
-          showToast('Hãy nhập Owner và Repository trước khi tạo link chia sẻ.', 'warning');
+          showToast('Vui lòng nhập Tên tài khoản và Kho lưu trữ trước khi tạo liên kết chia sẻ.', 'warning');
           return;
         }
         const base = `${window.location.origin}${window.location.pathname}`;
         const shareUrl = `${base}?gh_owner=${encodeURIComponent(githubCfg.owner)}&gh_repo=${encodeURIComponent(githubCfg.repo)}&gh_branch=${encodeURIComponent(githubCfg.branch || 'main')}&gh_path=${encodeURIComponent(githubCfg.path || 'data/eduexam_db.json')}`;
         try {
           if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(shareUrl).then(() => showToast('Đã sao chép link phòng thi gắn sẵn GitHub Repo!', 'success')).catch(() => {});
+            navigator.clipboard.writeText(shareUrl).then(() => showToast('Đã sao chép liên kết phòng thi gắn sẵn cấu hình GitHub!', 'success')).catch(() => {});
           } else {
             const ta = document.createElement('textarea'); ta.value = shareUrl; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
-            showToast('Đã sao chép link phòng thi gắn sẵn GitHub Repo!', 'success');
+            showToast('Đã sao chép liên kết phòng thi gắn sẵn cấu hình GitHub!', 'success');
           }
         } catch (e) { showToast('Không thể tự sao chép, vui lòng sao chép thủ công.', 'warning'); }
       });
@@ -5007,6 +5072,93 @@
           currentQIndex--; renderQuestion(); renderOmrPalette();
         } else if (e.key.toLowerCase() === 'f') {
           document.getElementById('flagQuestionBtn').click();
+        }
+      });
+
+      // Restore persisted user session & active exam progress on page refresh (F5)
+      (function restorePersistedState() {
+        const savedSession = safeGetStorage(STORE_KEYS.session, null);
+        if (!savedSession || !savedSession.user) return;
+        currentUser = savedSession.user;
+        document.getElementById('authGateOverlay').classList.add('hidden');
+        document.getElementById('candidateName').value = currentUser.fullName || '';
+        document.getElementById('candidateId').value = currentUser.sbd || '';
+        document.getElementById('candidateClass').value = currentUser.className || '12A1';
+        document.getElementById('candidateSchool').value = currentUser.school || 'THPT Bỉm Sơn';
+
+        const isStudent = currentUser.role === 'student';
+        ['candidateName', 'candidateId', 'candidateClass'].forEach(id => {
+          const el = document.getElementById(id);
+          el.readOnly = isStudent;
+          el.classList.toggle('opacity-80', isStudent);
+        });
+        document.getElementById('navTeacherBtn').classList.toggle('hidden', isStudent);
+        document.getElementById('headerUserSubtitle').textContent = isStudent
+          ? `Thí sinh: ${currentUser.fullName} (${currentUser.sbd} - ${currentUser.className})`
+          : `Quản trị viên • Hội đồng thi THPT`;
+        document.getElementById('lobbyRoleBadge').textContent = isStudent ? `SBD: ${currentUser.sbd}` : 'QUẢN TRỊ VIÊN';
+
+        updateAntiCheatSummaryUI();
+        updateHeaderGithubBadge(githubCfg.owner && githubCfg.repo ? 'synced' : 'idle');
+        renderLobbyRegisteredSubjects();
+        renderLobbyFoldersAndExams();
+        renderHistory();
+
+        // Check if an active exam was in progress before refresh
+        const savedExam = safeGetStorage(STORE_KEYS.activeExam, null);
+        if (savedExam && savedExam.examId) {
+          const matchedExam = examBank.find(e => e.meta.id === savedExam.examId);
+          if (matchedExam) {
+            currentExam = matchedExam;
+            currentQIndex = Math.min(savedExam.currentQIndex || 0, matchedExam.questions.length - 1);
+            userAnswers = savedExam.userAnswers || {};
+            flaggedQuestions = new Set(savedExam.flaggedQuestions || []);
+            questionTimeSpent = savedExam.questionTimeSpent || {};
+            violationCount = savedExam.violationCount || 0;
+            integrityScore = typeof savedExam.integrityScore === 'number' ? savedExam.integrityScore : 100;
+            proctorLogs = savedExam.proctorLogs || [];
+            totalExamSeconds = savedExam.totalExamSeconds || (matchedExam.meta.durationMinutes * 60);
+            remainingSeconds = Math.floor(((savedExam.endTimestamp || Date.now()) - Date.now()) / 1000);
+
+            document.getElementById('examSubjectBadge').textContent = currentExam.meta.subject;
+            document.getElementById('examTitleDisplay').textContent = currentExam.meta.title;
+            document.getElementById('examCandidateMeta').textContent = `${currentUser.fullName} • SBD: ${currentUser.sbd} • Lớp ${currentUser.className || '12A1'} • ${currentUser.school || 'THPT Bỉm Sơn'}`;
+            document.getElementById('headerIntegrityScore').textContent = `${integrityScore}%`;
+            document.getElementById('sidebarIntegrityBadge').textContent = `${integrityScore}%`;
+            const logBox = document.getElementById('proctorLogMini');
+            logBox.innerHTML = '';
+            proctorLogs.forEach(l => {
+              const d = document.createElement('div');
+              d.className = l.severity === 'warn' ? 'text-rose-500 dark:text-rose-400 font-semibold' : 'text-emerald-600 dark:text-emerald-400';
+              d.textContent = `[${l.time}] ${l.msg}`;
+              logBox.appendChild(d);
+            });
+
+            if (remainingSeconds <= 0) {
+              switchView('exam');
+              showToast('Thời gian làm bài đã hết trong lúc tải lại trang. Hệ thống đang tự động thu bài!', 'warning');
+              finishAndGradeExam();
+              return;
+            }
+            switchView('exam');
+            renderQuestion();
+            renderOmrPalette();
+            startExamTimer();
+            showToast('Đã khôi phục phiên làm bài thi của bạn!', 'info');
+            return;
+          }
+        }
+
+        const targetView = (!isStudent && savedSession.view === 'teacher') ? 'teacher' : 'lobby';
+        switchView(targetView);
+      })();
+
+      // Warn user before accidentally refreshing/closing tab during active exam
+      window.addEventListener('beforeunload', (e) => {
+        if (currentView === 'exam') {
+          saveActiveExamState();
+          e.preventDefault();
+          e.returnValue = '';
         }
       });
 
